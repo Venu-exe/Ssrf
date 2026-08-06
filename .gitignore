@@ -1,0 +1,6 @@
+# Run output
+ssrf_oob_*/
+*.log
+
+# OS junk
+.DS_Store
