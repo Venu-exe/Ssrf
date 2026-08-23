@@ -1,24 +1,5 @@
 #!/bin/bash
-# ==========================================================
-# ssrf_oob.sh -- Blind/OOB SSRF callback helper
-#
-# Injects a UNIQUE, per-request interactsh subdomain label into
-# every candidate SSRF injection point, then correlates any
-# out-of-band interaction back to the EXACT request that caused
-# it. This is the whole point of the design:
-#
-#   - Every test gets its own label -> a hit can only ever be
-#     attributed to ONE specific request. No ambiguity, no
-#     "which of these 40 params fired?" guessing.
-#   - Every candidate tested is logged and reported, hit or not.
-#     Nothing is silently dropped from the output.
-#   - Any interaction whose label doesn't match a known test
-#     (background internet scanning of the wildcard domain,
-#     stale runs, etc.) is reported separately as NOISE, never
-#     counted as a confirmed finding.
-#
-# Only run against targets you are authorized to test.
-# ==========================================================
+
 
 set -uo pipefail
 VERSION="3.0"
