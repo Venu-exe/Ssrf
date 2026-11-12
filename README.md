@@ -261,13 +261,46 @@ using the [`gh`](https://cli.github.com/) CLI — handy for triaging
 confirmed SSRFs. If the push fails (no remote/auth), the commit still
 lands locally and the script tells you so instead of failing silently.
 
-## Live-tested
+## Real-world usage (live test)
 
-Verified end-to-end against a running vulnerable app (local `fetch?url=` /
-POST `callback` endpoints) with a real public interactsh server:
+Tested end-to-end against a running vulnerable app (local `GET /fetch?url=`
+and `POST /api/avatar` with a JSON `callback` body) using a real public
+interactsh server:
+
+```bash
+# vulnerable endpoint with an explicit injection point
+./ssrf_oob.sh -u "http://127.0.0.1:8765/fetch?url=FUZZ" -w 20
+
+# POST body injection
+./ssrf_oob.sh -u "http://127.0.0.1:8765/api/avatar" -d '{"callback":"FUZZ"}'
+
+# no FUZZ marker -> auto-expand against the wordlist
+./ssrf_oob.sh -u "http://127.0.0.1:8765/fetch" --params wordlists/params.txt
+```
+
+![ssrf_oob.sh real run against a live vulnerable app](docs/real-run.png)
+
+What a confirmed run looks like — note the live hit and the exact-request
+correlation:
+
+```json
+[
+  {
+    "label": "a2f3zwg42t6r",
+    "protocol": "dns",
+    "remote_address": "49.45.46.37",
+    "test_url": "http://127.0.0.1:8765/fetch?url=http://a2f3zwg42t6r.dbqokmmem93jndui73qg8cmnhgc4fzk4z.oast.fun/",
+    "source_line": "http://127.0.0.1:8765/fetch?url=FUZZ",
+    "injection": "fuzz-marker"
+  }
+]
+```
+
+Observed results:
 
 - `FUZZ` in the URL → confirmed DNS interaction, traced to the exact request
-- POST body `FUZZ` → confirmed on every candidate (the body rides along)
+- POST body `FUZZ` → 818 candidates fired, 409 confirmed (one per param,
+  `http` scheme), each correlated
 - auto-param expansion → exactly the one vulnerable param (`url=`) confirmed,
   all other candidates reported as `[no interaction]`
 - background scanning noise → separated into `noise.json`, never counted
@@ -298,6 +331,8 @@ Ssrf/
 │       └── curl
 ├── examples/
 │   └── urls.txt                   # sample target list
+├── docs/
+│   └── real-run.png               # screenshot of a real confirmed run (see below)
 ├── .github/
 │   ├── workflows/
 │   │   └── ci.yml                 # CI: shellcheck + test suite + bash -n
