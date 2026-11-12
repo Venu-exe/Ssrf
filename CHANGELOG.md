@@ -28,6 +28,14 @@
   concurrency 1 so the limit is honored).
 - `-A/--user-agent`, `-x/--proxy`, `-b/--cookie`, `-k/--insecure`.
 - `--server` for a custom interactsh server; broader oast-domain regex.
+- `--itch-config` + automatic bootstrap of a working interactsh-client
+  config — fixes the `Could not read config: EOF` fatal seen when the
+  default config file is missing or all-comments (found during live
+  testing). Client stdin is also detached (`< /dev/null`).
+- Wait (up to 15s) for the freshly-registered session domain to resolve
+  before firing payloads — freshly registered wildcard OOB domains can
+  briefly NXDOMAIN / be negative-cached, which otherwise silently loses
+  the first callbacks. Skippable via `SSRF_OOB_SKIP_DNS_CHECK=1`.
 - Live hit polling during the grace period (`--poll-interval`):
   confirmed interactions are printed as they arrive.
 - `<outdir>/summary.json` — machine-readable run summary.

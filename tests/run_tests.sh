@@ -14,6 +14,10 @@ TMP="$(mktemp -d /tmp/ssrf_oob_tests_XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
 export PATH="$STUBS:$PATH"
+# keep the interactsh config bootstrap hermetic in tests
+export ITCH_CONFIG="$TMP/itch-config.yaml"
+# stub session domain does not resolve -- skip the DNS wait in tests
+export SSRF_OOB_SKIP_DNS_CHECK=1
 SMALL_PARAMS="$TMP/params_small.txt"
 cat > "$SMALL_PARAMS" <<'EOF'
 url

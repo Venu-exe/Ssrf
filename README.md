@@ -43,7 +43,9 @@ This tool exists to close that gap:
 ### Requirements
 
 - `bash`, `curl`
-- [`interactsh-client`](https://github.com/projectdiscovery/interactsh) — the OOB engine
+- [`interactsh-client`](https://github.com/projectdiscovery/interactsh) — the OOB engine.
+  Use a **recent release** (v1.4.x): older clients can't decode the current
+  interaction format from the public servers.
   ```bash
   go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
   ```
@@ -138,6 +140,7 @@ Payload / request shaping:
 
 OOB engine:
   --server URL            Custom interactsh server
+  --itch-config FILE      interactsh-client config (auto-created if missing/empty)
   --poll-interval SECONDS Live hit polling interval (default: 5)
 
 Run control:
@@ -257,6 +260,17 @@ issue in that repo (or comments on the existing one for the same run)
 using the [`gh`](https://cli.github.com/) CLI — handy for triaging
 confirmed SSRFs. If the push fails (no remote/auth), the commit still
 lands locally and the script tells you so instead of failing silently.
+
+## Live-tested
+
+Verified end-to-end against a running vulnerable app (local `fetch?url=` /
+POST `callback` endpoints) with a real public interactsh server:
+
+- `FUZZ` in the URL → confirmed DNS interaction, traced to the exact request
+- POST body `FUZZ` → confirmed on every candidate (the body rides along)
+- auto-param expansion → exactly the one vulnerable param (`url=`) confirmed,
+  all other candidates reported as `[no interaction]`
+- background scanning noise → separated into `noise.json`, never counted
 
 ## How correlation works
 

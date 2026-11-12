@@ -59,6 +59,7 @@ TIMEOUT=15
 RETRIES=0
 RATE=0
 SERVER=""
+ITCH_CONFIG="${ITCH_CONFIG:-}"
 ITCH_PID=""
 TEMP_LIST=""
 
@@ -125,6 +126,9 @@ Payload / request shaping:
 
 OOB engine:
   --server URL            Custom interactsh server (default: public servers).
+  --itch-config FILE      interactsh-client config file (default:
+                          ~/.config/interactsh-client/config.yaml, auto-
+                          created with the public servers if missing).
   --poll-interval SECONDS How often to poll the interaction log for live
                           hits during the grace period (default: 5).
 
@@ -196,6 +200,7 @@ while [ $# -gt 0 ]; do
         -b|--cookie) COOKIE="${2:-}"; shift 2 ;;
         -k|--insecure) INSECURE=1; shift ;;
         --server) SERVER="${2:-}"; shift 2 ;;
+        --itch-config) ITCH_CONFIG="${2:-}"; shift 2 ;;
         -q|--quiet) QUIET=1; shift ;;
         -y|--yes) AUTO_INSTALL=1; shift ;;
         --git-repo) GIT_REPO="${2:-}"; shift 2 ;;
@@ -338,9 +343,18 @@ fi
 # 2. Start interactsh-client, capture its assigned domain.
 # ----------------------------------------------------------
 log "Starting interactsh-client session..."
-ITCH_ARGS=(-pi "$POLL_INTERVAL" -json)
+# interactsh-client fatals with "Could not read config: EOF" when its
+# config file is missing or has no active (uncommented) keys -- bootstrap
+# a working default config with the public servers in that case.
+[ -z "$ITCH_CONFIG" ] && ITCH_CONFIG="$HOME/.config/interactsh-client/config.yaml"
+if ! grep -qE '^[[:space:]]*[^#[:space:]]' "$ITCH_CONFIG" 2>/dev/null; then
+    mkdir -p "$(dirname "$ITCH_CONFIG")"
+    printf 'server: oast.pro,oast.live,oast.site,oast.online,oast.fun,oast.me\n' > "$ITCH_CONFIG"
+    log "Wrote default interactsh config to $ITCH_CONFIG"
+fi
+ITCH_ARGS=(-config "$ITCH_CONFIG" -pi "$POLL_INTERVAL" -json)
 [ -n "$SERVER" ] && ITCH_ARGS+=(-server "$SERVER")
-interactsh-client "${ITCH_ARGS[@]}" > "$INTERACTSH_LOG" 2>&1 &
+interactsh-client "${ITCH_ARGS[@]}" < /dev/null > "$INTERACTSH_LOG" 2>&1 &
 ITCH_PID=$!
 
 DOMAIN=""
@@ -354,6 +368,35 @@ if [ -z "$DOMAIN" ]; then
     exit 1
 fi
 success "Session domain: $DOMAIN"
+
+# Wait briefly for the freshly-registered session domain to resolve.
+# Wildcard OOB domains can take a few seconds to propagate, and some
+# resolvers negative-cache the first lookup -- without this, payloads
+# fired immediately can hit a resolver that still says NXDOMAIN.
+resolved=0
+if [ "${SSRF_OOB_SKIP_DNS_CHECK:-0}" -eq 1 ]; then
+    resolved=1
+fi
+for _ in $(seq 1 15); do
+    [ "$resolved" -eq 1 ] && break
+    if have getent; then
+        getent hosts "$DOMAIN" >/dev/null 2>&1 && resolved=1
+    elif have nslookup; then
+        nslookup "$DOMAIN" >/dev/null 2>&1 && resolved=1
+    elif have dig; then
+        dig +short "$DOMAIN" 2>/dev/null | grep -q . && resolved=1
+    elif have python3; then
+        python3 -c 'import socket,sys; socket.gethostbyname(sys.argv[1])' "$DOMAIN" 2>/dev/null && resolved=1
+    else
+        resolved=1   # no resolver tool available -- don't block on this
+    fi
+    [ "$resolved" -eq 1 ] || sleep 1
+done
+if [ "$resolved" -eq 1 ]; then
+    success "Session domain resolves: $DOMAIN"
+else
+    warn "Session domain $DOMAIN is not resolving yet -- continuing anyway (interactions may still arrive later)"
+fi
 
 # ----------------------------------------------------------
 # Helpers shared with the send_one worker (exported below).
