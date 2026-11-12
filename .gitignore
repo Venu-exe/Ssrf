@@ -1,6 +1,16 @@
 # Run output
 ssrf_oob_*/
+
+# Logs
 *.log
+
+# Test scratch space
+tests/.tmp/
+/tmp/
 
 # OS junk
 .DS_Store
+
+# Editor junk
+*.swp
+*~

@@ -1,8 +1,13 @@
 # ssrf-oob-helper
 
-A blind/out-of-band SSRF callback helper for bug bounty hunting. Bash + `interactsh-client`.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/Venu-exe/Ssrf/actions/workflows/ci.yml/badge.svg)](https://github.com/Venu-exe/Ssrf/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Venu-exe/Ssrf)](https://github.com/Venu-exe/Ssrf/releases)
 
-Only run this against targets you are authorized to test.
+A blind / out-of-band **SSRF callback helper** for bug bounty hunting and authorized
+pentests. Pure bash + [`interactsh-client`](https://github.com/projectdiscovery/interactsh).
+
+> ⚠️ **Only run this against targets you are authorized to test.** See [SECURITY.md](SECURITY.md).
 
 ## The problem with most "SSRF callback" scripts
 
@@ -18,37 +23,63 @@ This tool exists to close that gap:
   A hit can be traced back to exactly one request — one URL, one param,
   one scheme variant. No guessing.
 - **Nothing is silently skipped.** A line without an obvious injection
-  point isn't dropped — it's expanded against ~45 built-in candidate
-  SSRF param names and tested that way. The final report lists every
-  candidate tested, hit or not.
+  point isn't dropped — it's expanded against the candidate param
+  wordlist (`wordlists/params.txt`, 250+ names) and tested that way.
+  The final report lists every candidate tested, hit or not.
 - **Noise is reported separately, never counted as a finding.** Any
   interaction that doesn't match a known label (background scanning of
-  the wildcard `*.oast.fun` domain, stale runs, etc.) goes to
+  the wildcard `*.oast.*` domain, stale runs, etc.) goes to
   `noise.json`, clearly separated from `confirmed.json`.
-- **Async-friendly.** A configurable grace period (`-w`) accounts for
-  targets that process SSRF payloads out-of-band (job queues, webhook
-  dispatchers) rather than synchronously in the request.
+- **Failures are never hidden.** Requests that fail at the transport
+  level are reported as `UNSENT` in the report — they can't masquerade
+  as true negatives.
+- **Async-friendly.** A configurable grace period (`-w`) plus live
+  polling (`--poll-interval`) accounts for targets that process SSRF
+  payloads out-of-band (job queues, webhook dispatchers) rather than
+  synchronously in the request.
 
-## Requirements
+## Install
+
+### Requirements
 
 - `bash`, `curl`
-- [`interactsh-client`](https://github.com/projectdiscovery/interactsh) — the OOB interaction engine
+- [`interactsh-client`](https://github.com/projectdiscovery/interactsh) — the OOB engine
   ```bash
   go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
   ```
-  or pass `-y` to have the script attempt this for you (requires Go).
-- `jq` (optional but recommended — falls back to grep-based JSON parsing without it)
+  (or pass `-y` once and the script installs it for you, if Go is present)
+- `jq` — optional but recommended (falls back to grep-based parsing without it)
 
-## Usage
+### Options
 
 ```bash
+# 1) Run straight from a clone
 chmod +x ssrf_oob.sh
+./ssrf_oob.sh --help
 
-# Single URL (new in v3.0)
+# 2) Install into ~/.local/bin
+./install.sh
+
+# 3) Docker
+docker build -t ssrf-oob .
+docker run --rm -v "$PWD:/out" ssrf-oob -u "https://target.com/fetch?url=FUZZ" -o /out
+```
+
+## Quick start
+
+```bash
+# Single URL with an explicit injection point
 ./ssrf_oob.sh -u "https://target.com/api/fetch?url=FUZZ"
 
-# List of URLs
+# List of URLs (see examples/urls.txt)
 ./ssrf_oob.sh -l urls.txt
+
+# POST body + header injection
+./ssrf_oob.sh -u "https://target.com/api/fetch" \
+  -d '{"callback_url":"FUZZ"}' -H "X-Forwarded-Host: FUZZ"
+
+# Everything: all scheme variants, URL-encoded payloads, slow async target
+./ssrf_oob.sh -u "https://target.com/endpoint" --scheme all --encode -w 120
 ```
 
 ### Injection points
@@ -60,22 +91,23 @@ https://target.com/api/fetch?url=FUZZ
 https://target.com/proxy?dest=FUZZ&other=1
 ```
 
-No `FUZZ` marker? No problem — the script automatically expands against
-every built-in candidate param name (`url`, `dest`, `redirect_uri`,
-`callback`, `webhook`, `src`, ...) instead of skipping.
+No `FUZZ` marker? No problem — the line is automatically expanded against
+every candidate param in the wordlist (`url`, `dest`, `redirect_uri`,
+`callback`, `webhook`, `src`, …) instead of being skipped.
 
-Header-based injection:
+Header-based injection (repeatable):
+
 ```bash
 ./ssrf_oob.sh -u "https://target.com/api/fetch" -H "X-Forwarded-Host: FUZZ"
 ```
 
-Body-based injection (POST):
+Body-based injection (implies `POST` unless `-X` is given):
+
 ```bash
-./ssrf_oob.sh -u "https://target.com/api/fetch" \
-  -d '{"callback_url":"FUZZ"}' -X POST
+./ssrf_oob.sh -u "https://target.com/api/fetch" -d '{"callback_url":"FUZZ"}' -X POST
 ```
 
-### Full options
+## Full options
 
 ```
 Usage:
@@ -86,48 +118,73 @@ Input (one required):
   -u, --url URL           Single target URL (FUZZ marker optional)
   -l, --list FILE         File of target URLs (FUZZ marker optional per line)
 
-Options:
+Injection:
   -H "Header: value"      Extra header, repeatable, FUZZ-aware
   -X METHOD               HTTP method (default: GET, or POST if -d given)
   -d, --data TEMPLATE     Request body template, FUZZ-aware
-  --scheme MODE           http | bare | both (default: both)
-  --params FILE           Override built-in candidate param list
-  -w, --wait SECONDS      Grace period before polling for hits (default: 45)
+
+Payload / request shaping:
+  --scheme MODE           http | https | bare | both | all (default: both)
+  --encode                URL-encode the callback payload before injection
+  --params FILE           Override the candidate param wordlist
+  --list-params           Print the candidate param wordlist and exit
+  -t, --timeout SECONDS   Per-request timeout (default: 15)
+  --retries N             Retry transport-level failures (default: 0)
+  --rate SECONDS          Min delay between requests (forces concurrency 1)
+  -A, --user-agent UA     Custom User-Agent
+  -x, --proxy URL         Route requests via a proxy
+  -b, --cookie STR        Cookie header value
+  -k, --insecure          Skip TLS verification
+
+OOB engine:
+  --server URL            Custom interactsh server
+  --poll-interval SECONDS Live hit polling interval (default: 5)
+
+Run control:
+  -w, --wait SECONDS      Grace period before final correlation (default: 45)
   -c, --concurrency N     Parallel requests (default: 5)
   -o, --outdir DIR        Output directory
+  -q, --quiet             Less chatter
   -y, --yes               Auto-install interactsh-client if missing
+
+Results / GitHub integration:
   --git-repo PATH         Push results into PATH/findings/ssrf/<id>/
   --id NAME               Label for the git-repo findings folder
-  -h, --help
-  -v, --version
+  --gh-issue              Also open/comment a GitHub issue in that repo (gh CLI)
+  -h, --help              Help
+  -v, --version           Version
 ```
-
-### Pushing results to a findings repo
-
-```bash
-./ssrf_oob.sh -l urls.txt --git-repo ~/bugbounty-findings --id acme-corp
-```
-
-Copies `report.txt`, `confirmed.json`, `noise.json`, `correlation.tsv`,
-and `send.log` into `<repo>/findings/ssrf/<id>/`, then commits and
-pushes. If push fails (no remote/auth), the commit still lands locally
-and the script tells you so instead of failing silently.
 
 ## Output
 
 ```
-<outdir>/report.txt        One line per candidate tested — [CONFIRMED] or [no interaction]
-<outdir>/confirmed.json     Only confirmed OOB hits, with source request + remote address
-<outdir>/noise.json         Unmatched interactions (informational, not counted)
-<outdir>/correlation.tsv    label -> exact request that used it
-<outdir>/send.log           Per-request SENT/FAILED status with HTTP code
-<outdir>/interactsh.log     Raw interactsh-client JSON stream
+<outdir>/report.txt        One line per candidate tested — [CONFIRMED] / [UNSENT] / [no interaction]
+<outdir>/confirmed.json    Only confirmed OOB hits, with source request + remote address
+<outdir>/noise.json        Unmatched interactions (informational, not counted)
+<outdir>/correlation.tsv   label -> exact request that used it
+<outdir>/send.log          Per-request SENT/FAILED status with HTTP code
+<outdir>/summary.json      Machine-readable run summary
+<outdir>/interactsh.log    Raw interactsh-client JSON stream
 ```
+
+## Pushing results to a findings repo (with `gh`)
+
+```bash
+./ssrf_oob.sh -l urls.txt --git-repo ~/bugbounty-findings --id acme-corp --gh-issue
+```
+
+Copies `report.txt`, `confirmed.json`, `noise.json`, `correlation.tsv`,
+`send.log`, and `summary.json` into `<repo>/findings/ssrf/<id>/`, then
+commits and pushes. With `--gh-issue`, it additionally opens a GitHub
+issue in that repo (or comments on the existing one for the same run)
+using the [`gh`](https://cli.github.com/) CLI — handy for triaging
+confirmed SSRFs. If the push fails (no remote/auth), the commit still
+lands locally and the script tells you so instead of failing silently.
 
 ## How correlation works
 
 1. A single `interactsh-client` session is started; its assigned wildcard
-   domain (e.g. `abcxyz....oast.fun`) is captured.
+   domain (e.g. `abcxyz....oast.pro`) is captured.
 2. For each test case, a random 12-character label is generated and used
    as the subdomain: `<label>.<session-domain>`.
 3. Every interaction reported by `interactsh-client` includes a `full-id`
@@ -135,6 +192,16 @@ and the script tells you so instead of failing silently.
    against the correlation table.
 4. A match → confirmed, with the exact source request attached.
    No match → noise, reported but not counted.
+
+## Development
+
+```bash
+bash tests/run_tests.sh     # hermetic suite: stubbed interactsh-client + curl, no network
+shellcheck -x ssrf_oob.sh   # lint
+```
+
+CI runs both on every push/PR (`.github/workflows/ci.yml`).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

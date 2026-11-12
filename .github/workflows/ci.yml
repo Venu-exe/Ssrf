@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: Lint
+        run: shellcheck -x ssrf_oob.sh install.sh tests/run_tests.sh tests/stubs/curl tests/stubs/interactsh-client
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl bash
+      - name: Run hermetic test suite (stubbed interactsh-client + curl)
+        run: bash tests/run_tests.sh
+
+  bash-syntax:
+    name: bash -n syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: for f in ssrf_oob.sh install.sh tests/run_tests.sh tests/stubs/*; do bash -n "$f"; done

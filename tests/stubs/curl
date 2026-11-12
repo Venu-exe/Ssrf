@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Test stub for curl.
+# Records every invocation to $SSRF_TEST_CURL_LOG as:
+#   METHOD<TAB>url<TAB>headers<TAB>body
+# then, if the request matches the hit rule, appends an interaction JSON
+# line for that request's label to $SSRF_TEST_OUTDIR/interactsh.log.
+#
+# Hit rule (env SSRF_TEST_HIT_ON, default "url="):
+#   the URL, any header, or the body must contain the substring.
+# If SSRF_TEST_NOISE=1, one unknown-label interaction is also emitted.
+# If SSRF_TEST_FAIL_LABELS=1, requests whose URL contains "failme" get
+# curl exit code 7 (transport failure) and print no http code.
+
+method="GET"; url=""; body=""; headers=""
+prev=""
+for a in "$@"; do
+    case "$prev" in
+        -X) method="$a" ;;
+        -d|--data) body="$a" ;;
+        -H) headers="$headers|$a" ;;
+    esac
+    case "$a" in
+        -*) prev="$a" ;;
+        *) url="$a"; prev="" ;;
+    esac
+done
+
+printf '%s\t%s\t%s\t%s\n' "$method" "$url" "${headers#|}" "$body" >> "${SSRF_TEST_CURL_LOG:?}"
+
+if [[ "$url" == *failme* ]] && [ "${SSRF_TEST_FAIL_LABELS:-0}" = "1" ]; then
+    exit 7
+fi
+
+hit_on="${SSRF_TEST_HIT_ON:-url=}"
+if [[ "$url$headers$body" == *"$hit_on"* ]]; then
+    # domain-agnostic: echo back whatever <label>.<domain> the script used
+    match=$(printf '%s' "$url$headers$body" | grep -oE '[a-z0-9]{12}\.[a-z0-9]+\.oast\.[a-z.]+' | head -n1)
+    if [ -n "$match" ]; then
+        label="${match%%.*}"
+        dom="${match#*.}"
+        printf '{"full-id":"%s.%s","protocol":"http","remote-address":"203.0.113.7","timestamp":"2026-11-12T00:00:00Z"}\n' \
+            "$label" "$dom" >> "${SSRF_TEST_OUTDIR:?}/interactsh.log"
+    fi
+fi
+
+if [ "${SSRF_TEST_NOISE:-0}" = "1" ]; then
+    printf '{"full-id":"noise99zz.abcd1234abcd.oast.pro","protocol":"dns","remote-address":"198.51.100.9","timestamp":"2026-11-12T00:00:01Z"}\n' \
+        >> "${SSRF_TEST_OUTDIR:?}/interactsh.log"
+fi
+
+echo "200"
+exit 0

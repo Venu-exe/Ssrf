@@ -1,0 +1,40 @@
+name: Bug report
+description: Something isn't working as expected
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please only report bugs against **targets you are authorized to test**.
+  - type: input
+    id: version
+    attributes:
+      label: ssrf_oob.sh version
+      placeholder: "v4.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect vs. what actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command used (sanitize any secrets/tokens!)
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output (report.txt / send.log / interactsh.log excerpts)
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "OS, bash version, interactsh-client version, jq present?"

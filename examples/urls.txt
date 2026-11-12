@@ -1,0 +1,7 @@
+# Example target list for ssrf_oob.sh — replace with your own authorized targets.
+# Lines may contain a FUZZ marker where the callback should be injected:
+https://example.com/api/fetch?url=FUZZ
+https://example.com/proxy?dest=FUZZ&mode=fast
+# Lines without FUZZ are auto-expanded against the candidate param wordlist:
+https://example.com/webhook-tester
+https://example.com/api/v1/avatar

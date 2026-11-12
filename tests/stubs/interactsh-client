@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Test stub for interactsh-client.
+# Prints a banner and a single line containing the fake session domain
+# (matching the script's domain regex), then sleeps forever. Interaction
+# JSON lines are appended to the log file directly by the curl stub.
+echo "interactsh-client test stub v1.2.3 (stubbed, no real OOB server)"
+echo "Session domain: abcd1234abcd.oast.pro"
+sleep 3600
