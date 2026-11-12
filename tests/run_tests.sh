@@ -154,8 +154,13 @@ if [ -n "$found_dir" ] && [ -f "$found_dir/summary.json" ] && [ -f "$found_dir/S
 else
     bad "t14: findings dir/files missing"
 fi
-assert_eq "t14: commit landed in findings repo" 1 "$(git -C "$gitrepo" rev-list --count HEAD 2>/dev/null || echo 0)"
-assert_contains "t14: commit message mentions run id" <(git -C "$gitrepo" log --format=%s -1) "ssrf-oob: testrun"
+commit_count=$(git -C "$gitrepo" rev-list --count HEAD 2>/dev/null || echo 0)
+assert_eq "t14: commit landed in findings repo" 1 "$commit_count"
+if [ "$commit_count" != "1" ]; then
+    echo "  --- git-debug.log from run ---"
+    cat "$TMP/t14/git-debug.log" 2>/dev/null
+fi
+assert_contains "t14: commit message mentions run id" <(git -C "$gitrepo" log --format=%s -1 2>/dev/null) "ssrf-oob: testrun"
 
 echo ""
 echo "=================================="

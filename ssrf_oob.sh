@@ -779,13 +779,20 @@ Unmatched/noise interactions: $NOISE_COUNT
 Session domain: $DOMAIN
 SUMMARY
 
-        if ( cd "$GIT_REPO" && \
-             git add "findings/ssrf/$RUN_ID" 2>/dev/null && \
-             git commit -m "ssrf-oob: $RUN_ID ($CONFIRMED_COUNT confirmed)" 2>/dev/null && \
-             git push 2>/dev/null ); then
+        # Fallback identity so commits work on CI runners / fresh machines
+        # that have no git user.name/user.email configured.
+        GIT_ID=()
+        if [ -z "$(git -C "$GIT_REPO" config user.email 2>/dev/null || true)" ]; then
+            GIT_ID=(-c "user.name=${GIT_AUTHOR_NAME:-ssrf-oob}" -c "user.email=${GIT_AUTHOR_EMAIL:-ssrf-oob@localhost}")
+        fi
+        GIT_DEBUG="$OUTDIR/git-debug.log"
+        : > "$GIT_DEBUG"
+        if git -C "$GIT_REPO" add "findings/ssrf/$RUN_ID" 2>>"$GIT_DEBUG" && \
+           git -C "$GIT_REPO" "${GIT_ID[@]}" commit -m "ssrf-oob: $RUN_ID ($CONFIRMED_COUNT confirmed)" 2>>"$GIT_DEBUG" && \
+           GIT_TERMINAL_PROMPT=0 git -C "$GIT_REPO" push 2>>"$GIT_DEBUG"; then
             success "Pushed to GitHub"
         else
-            warn "git add/commit/push failed -- check remote/auth; results are still copied locally to $GIT_OUTDIR"
+            warn "git add/commit/push failed -- see $GIT_DEBUG (results are still copied locally to $GIT_OUTDIR)"
         fi
 
         # --gh-issue: summarize the run as a GitHub issue (or comment on
